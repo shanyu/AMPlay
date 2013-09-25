@@ -49,9 +49,9 @@ public class AppClient extends Configured implements Tool {
   
   private static final Log LOG = LogFactory.getLog(AppClient.class);
   
-  private final Configuration conf;
-  private final YarnRPC rpc;
-  private final String amJarUri;
+  private Configuration conf;
+  private YarnRPC rpc;
+  private String amJarUri;
   
   private String appName = "AMPlay";
   private int amMemory = 1024;
@@ -64,13 +64,12 @@ public class AppClient extends Configured implements Tool {
   
   
   public AppClient() {
-    conf = getConf();
-    rpc = YarnRPC.create(conf);
-    amJarUri = "";
+    
   }
   
   @Override
   public int run(String[] args) throws Exception {
+    init();
     connect();
     getAppId();
     setupAMContainer();
@@ -80,13 +79,19 @@ public class AppClient extends Configured implements Tool {
     return 0;
   }
   
+  private void init() {
+    conf = getConf();
+    rpc = YarnRPC.create(conf);
+    amJarUri = "hdfs://localhost:9000/AMPlayMaster-1.0-SNAPSHOT.jar";
+  }
+  
   private void connect() {
     YarnConfiguration yarnConf = new YarnConfiguration(conf);
     InetSocketAddress rmAddress = 
         NetUtils.createSocketAddr(yarnConf.get(
             YarnConfiguration.RM_ADDRESS,
             YarnConfiguration.DEFAULT_RM_ADDRESS));             
-    LOG.info("Connecting to ResourceManager at " + rmAddress);
+    LOG.info("Connecting to ResourceManager AsM at " + rmAddress);
 
 //    Configuration appsManagerServerConf = new Configuration(conf);
 //    appsManagerServerConf.setClass(
@@ -152,16 +157,16 @@ public class AppClient extends Configured implements Tool {
     // working directory from which the command will be run, we need to append
     // "." to the path. 
     // By default, all the hadoop specific classpaths will already be available 
-    // in $CLASSPATH, so we should be careful not to overwrite it.   
-    String classPathEnv = "$CLASSPATH:./*:";    
+    // in $CLASSPATH, so we should be careful not to overwrite it.
+    String classPathEnv = System.getenv("CLASSPATH");    
     env.put("CLASSPATH", classPathEnv);
     amContainer.setEnvironment(env);
     
     // Construct the command to be executed on the launched container 
     String command =
-        "${JAVA_HOME}/bin/java" +
-        " MyAppMaster" + 
-        " arg1 arg2 arg3" + 
+        "%JAVA_HOME%/bin/java" +
+        " com.shanyu.hadoop.master.AppMaster" + 
+        " " + 
         " 1>" + ApplicationConstants.LOG_DIR_EXPANSION_VAR + "/stdout" +
         " 2>" + ApplicationConstants.LOG_DIR_EXPANSION_VAR + "/stderr";                     
 
@@ -171,6 +176,8 @@ public class AppClient extends Configured implements Tool {
 
     // Set the command array into the container spec
     amContainer.setCommands(commands);
+    
+    LOG.info("Container setup done, command=" + command);
   }
   
   private void setupAppContext() {

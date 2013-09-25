@@ -34,34 +34,39 @@ public class AppMaster extends Configured implements Tool {
   
   private static final Log LOG = LogFactory.getLog(AppMaster.class);
   
-  private final Configuration conf;
-  private final YarnRPC rpc;
+  private Configuration conf;
+  private YarnRPC rpc;
   
   private ApplicationAttemptId appAttemptID;
   private ApplicationMasterProtocol resourceManager;
   
   public AppMaster () {
-    conf = getConf();
-    rpc = YarnRPC.create(conf);
   }
   
   @Override
   public int run(String[] args) throws Exception {
+    LOG.info("Running AppMaster with: " + args.length);
+    init();
     getAttemptId();
     connect();
     registerAM();
     
     //need to use allocate() to emit heartbeat
-    Thread.sleep(30000);
+    Thread.sleep(60000);
     
     finishUp();
     return 0;
   }
   
+  private void init() {
+    conf = getConf();
+    rpc = YarnRPC.create(conf);
+  }
+  
   private void getAttemptId() {
     Map<String, String> envs = System.getenv();
     String containerIdString = 
-        envs.get(ApplicationConstants.Environment.CONTAINER_ID);
+        envs.get(ApplicationConstants.Environment.CONTAINER_ID.toString());
     if (containerIdString == null) {
       // container id should always be set in the env by the framework 
       throw new IllegalArgumentException(
@@ -76,18 +81,16 @@ public class AppMaster extends Configured implements Tool {
     YarnConfiguration yarnConf = new YarnConfiguration(conf);
     InetSocketAddress rmAddress = 
         NetUtils.createSocketAddr(yarnConf.get(
-            YarnConfiguration.RM_ADDRESS,
-            YarnConfiguration.DEFAULT_RM_ADDRESS));             
-    LOG.info("Connecting to ResourceManager at " + rmAddress);
+            YarnConfiguration.RM_SCHEDULER_ADDRESS,
+            YarnConfiguration.DEFAULT_RM_SCHEDULER_ADDRESS));             
+    LOG.info("Connecting to ResourceManager Scheduler at " + rmAddress);
 
     resourceManager = (ApplicationMasterProtocol) rpc.getProxy(
         ApplicationMasterProtocol.class, rmAddress, conf);
   }
   
   private void registerAM() throws IOException,YarnException{
-    InetSocketAddress serviceAddr = null;
-    serviceAddr = new InetSocketAddress("localhost", 8888);
-    
+        
     // Register the AM with the RM
     // Set the required info into the registration request: 
     // ApplicationAttemptId, 
@@ -95,8 +98,10 @@ public class AppMaster extends Configured implements Tool {
     // rpc port on which the app master accepts requests from the client 
     // tracking url for the client to track app master progress
     RegisterApplicationMasterRequest appMasterRequest = 
-        Records.newRecord(RegisterApplicationMasterRequest.class);
-    //appMasterRequest.setApplicationAttemptId(appAttemptID);     
+        Records.newRecord(RegisterApplicationMasterRequest.class);   
+    
+    InetSocketAddress serviceAddr = null;
+    serviceAddr = new InetSocketAddress("localhost", 8888);
     appMasterRequest.setHost(serviceAddr.getHostName());
     appMasterRequest.setRpcPort(serviceAddr.getPort());
     appMasterRequest.setTrackingUrl(serviceAddr.getHostName() + ":" + serviceAddr.getPort());
@@ -108,6 +113,8 @@ public class AppMaster extends Configured implements Tool {
     // would be needed by the ApplicationMaster when requesting for containers.
     RegisterApplicationMasterResponse response = 
         resourceManager.registerApplicationMaster(appMasterRequest);
+    
+    LOG.info("Registered AM: response=" + response.toString());
   }
   
   private void finishUp() throws IOException, YarnException {
@@ -115,6 +122,7 @@ public class AppMaster extends Configured implements Tool {
         Records.newRecord(FinishApplicationMasterRequest.class);
     appFinishRequest.setFinalApplicationStatus(FinalApplicationStatus.SUCCEEDED);
     resourceManager.finishApplicationMaster(appFinishRequest);
+    LOG.info("AppMaster finished");
   }
   
   public static void main(String[] args) throws Exception {

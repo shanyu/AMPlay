@@ -17,7 +17,7 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
     <!-- Versions for dependencies -->
-    <hadoop.version>2.1.1-SNAPSHOT</hadoop.version>
+    <hadoop.version>2.1.1-beta</hadoop.version>
     <guava.version>11.0.2</guava.version>
     <junit.version>4.8.2</junit.version>
 
