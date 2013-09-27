@@ -90,7 +90,7 @@ public class AppClient extends Configured implements Tool {
     InetSocketAddress rmAddress = 
         NetUtils.createSocketAddr(yarnConf.get(
             YarnConfiguration.RM_ADDRESS,
-            YarnConfiguration.DEFAULT_RM_ADDRESS));             
+            YarnConfiguration.DEFAULT_RM_ADDRESS));
     LOG.info("Connecting to ResourceManager AsM at " + rmAddress);
 
 //    Configuration appsManagerServerConf = new Configuration(conf);
@@ -104,10 +104,10 @@ public class AppClient extends Configured implements Tool {
   
   private void getAppId() throws IOException,YarnException {
     GetNewApplicationRequest request = 
-        Records.newRecord(GetNewApplicationRequest.class);              
+        Records.newRecord(GetNewApplicationRequest.class);
     GetNewApplicationResponse response = 
         applicationsManager.getNewApplication(request);
-    
+
     appId = response.getApplicationId();
     LOG.info("Got new ApplicationId=" + appId);
   }
@@ -168,7 +168,7 @@ public class AppClient extends Configured implements Tool {
         " com.shanyu.hadoop.master.AppMaster" + 
         " " + 
         " 1>" + ApplicationConstants.LOG_DIR_EXPANSION_VAR + "/stdout" +
-        " 2>" + ApplicationConstants.LOG_DIR_EXPANSION_VAR + "/stderr";                     
+        " 2>" + ApplicationConstants.LOG_DIR_EXPANSION_VAR + "/stderr";
 
     List<String> commands = new ArrayList<String>();
     commands.add(command);

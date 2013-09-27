@@ -3,6 +3,7 @@ package com.shanyu.hadoop.master;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.Map;
+//import java.security.PrivilegedAction;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -24,6 +25,11 @@ import org.apache.hadoop.yarn.exceptions.YarnException;
 import org.apache.hadoop.yarn.ipc.YarnRPC;
 import org.apache.hadoop.yarn.util.ConverterUtils;
 import org.apache.hadoop.yarn.util.Records;
+import org.apache.hadoop.security.UserGroupInformation;
+import org.apache.hadoop.security.token.Token;
+import org.apache.hadoop.security.token.TokenIdentifier;
+import org.apache.hadoop.security.SecurityUtil;
+import org.apache.hadoop.yarn.security.AMRMTokenIdentifier;
 
 
 /**
@@ -61,6 +67,8 @@ public class AppMaster extends Configured implements Tool {
   private void init() {
     conf = getConf();
     rpc = YarnRPC.create(conf);
+    
+    LOG.info("Security enabled: " + UserGroupInformation.isSecurityEnabled());
   }
   
   private void getAttemptId() {
@@ -77,16 +85,31 @@ public class AppMaster extends Configured implements Tool {
     LOG.info("ApplicationAttemptId = " + appAttemptID);
   }
   
-  private void connect() {
+  private void connect() throws IOException {
     YarnConfiguration yarnConf = new YarnConfiguration(conf);
-    InetSocketAddress rmAddress = 
+    final InetSocketAddress rmAddress = 
         NetUtils.createSocketAddr(yarnConf.get(
             YarnConfiguration.RM_SCHEDULER_ADDRESS,
-            YarnConfiguration.DEFAULT_RM_SCHEDULER_ADDRESS));             
+            YarnConfiguration.DEFAULT_RM_SCHEDULER_ADDRESS));
     LOG.info("Connecting to ResourceManager Scheduler at " + rmAddress);
+    
+    for (Token<? extends TokenIdentifier> token : UserGroupInformation
+        .getCurrentUser().getTokens()) {
+      if (token.getKind().equals(AMRMTokenIdentifier.KIND_NAME)) {
+        SecurityUtil.setTokenService(token, rmAddress);
+      }
+    }
 
+//    resourceManager = UserGroupInformation.getCurrentUser().doAs(
+//        new PrivilegedAction<ApplicationMasterProtocol>() {
+//          @Override
+//          public ApplicationMasterProtocol run() {
+//            return (ApplicationMasterProtocol) rpc.getProxy(
+//                ApplicationMasterProtocol.class, rmAddress, conf);
+//          }
+//        });
     resourceManager = (ApplicationMasterProtocol) rpc.getProxy(
-        ApplicationMasterProtocol.class, rmAddress, conf);
+      ApplicationMasterProtocol.class, rmAddress, conf);
   }
   
   private void registerAM() throws IOException,YarnException{
@@ -97,14 +120,17 @@ public class AppMaster extends Configured implements Tool {
     // host on which the app master is running
     // rpc port on which the app master accepts requests from the client 
     // tracking url for the client to track app master progress
-    RegisterApplicationMasterRequest appMasterRequest = 
-        Records.newRecord(RegisterApplicationMasterRequest.class);   
     
-    InetSocketAddress serviceAddr = null;
-    serviceAddr = new InetSocketAddress("localhost", 8888);
-    appMasterRequest.setHost(serviceAddr.getHostName());
-    appMasterRequest.setRpcPort(serviceAddr.getPort());
-    appMasterRequest.setTrackingUrl(serviceAddr.getHostName() + ":" + serviceAddr.getPort());
+    //RegisterApplicationMasterRequest appMasterRequest = 
+    //    Records.newRecord(RegisterApplicationMasterRequest.class);
+    RegisterApplicationMasterRequest appMasterRequest =
+        RegisterApplicationMasterRequest.newInstance("localhost", 8888, "localhost:8888");
+    
+    //InetSocketAddress serviceAddr = null;
+    //serviceAddr = new InetSocketAddress("localhost", 8888);
+    //appMasterRequest.setHost(serviceAddr.getHostName());
+    //appMasterRequest.setRpcPort(serviceAddr.getPort());
+    //appMasterRequest.setTrackingUrl(serviceAddr.getHostName() + ":" + serviceAddr.getPort());
     
     // The registration response is useful as it provides information about the 
     // cluster. 
