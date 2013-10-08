@@ -3,9 +3,11 @@ package com.shanyu.hadoop.client;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -33,6 +35,7 @@ import org.apache.hadoop.yarn.api.records.LocalResource;
 import org.apache.hadoop.yarn.api.records.LocalResourceType;
 import org.apache.hadoop.yarn.api.records.LocalResourceVisibility;
 import org.apache.hadoop.yarn.api.records.Resource;
+import org.apache.hadoop.yarn.api.records.YarnApplicationState;
 import org.apache.hadoop.yarn.conf.YarnConfiguration;
 import org.apache.hadoop.yarn.exceptions.YarnException;
 import org.apache.hadoop.yarn.ipc.YarnRPC;
@@ -51,8 +54,11 @@ public class AppClient extends Configured implements Tool {
   
   private Configuration conf;
   private YarnRPC rpc;
-  private String amJarUri;
+  private String amJarUri = "hdfs://localhost:9000/amplay/AMPlayMaster-1.0-SNAPSHOT.jar";
   
+  private static final Set<YarnApplicationState> DONE = EnumSet.of(
+      YarnApplicationState.FAILED, YarnApplicationState.FINISHED,
+      YarnApplicationState.KILLED);
   private String appName = "AMPlay";
   private int amMemory = 1024;
   
@@ -76,13 +82,22 @@ public class AppClient extends Configured implements Tool {
     setupAppContext();
     submitApp();
     
+    while(true) {
+      Thread.sleep(3000);
+      checkApp();
+      LOG.info("app progress: " + appReport.getProgress());
+      LOG.info("app state: " + appReport.getYarnApplicationState());
+      if(DONE.contains(appReport.getYarnApplicationState())) {
+        break;
+      }
+    }
+    
     return 0;
   }
   
   private void init() {
     conf = getConf();
     rpc = YarnRPC.create(conf);
-    amJarUri = "hdfs://localhost:9000/AMPlayMaster-1.0-SNAPSHOT.jar";
   }
   
   private void connect() {
