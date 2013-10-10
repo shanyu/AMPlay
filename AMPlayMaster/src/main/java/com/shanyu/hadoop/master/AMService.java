@@ -2,7 +2,7 @@ package com.shanyu.hadoop.master;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.net.URI;
+import java.security.PrivilegedAction;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -15,7 +15,6 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.io.Text;
 import org.apache.hadoop.net.NetUtils;
 import org.apache.hadoop.security.SecurityUtil;
 import org.apache.hadoop.security.UserGroupInformation;
@@ -42,14 +41,15 @@ import org.apache.hadoop.yarn.api.records.LocalResourceVisibility;
 import org.apache.hadoop.yarn.api.records.Priority;
 import org.apache.hadoop.yarn.api.records.Resource;
 import org.apache.hadoop.yarn.api.records.ResourceRequest;
+import org.apache.hadoop.yarn.api.records.NMToken;
 import org.apache.hadoop.yarn.conf.YarnConfiguration;
 import org.apache.hadoop.yarn.exceptions.YarnException;
 import org.apache.hadoop.yarn.ipc.YarnRPC;
 import org.apache.hadoop.yarn.security.AMRMTokenIdentifier;
-import org.apache.hadoop.yarn.security.ContainerTokenIdentifier;
 import org.apache.hadoop.yarn.util.ConverterUtils;
 import org.apache.hadoop.yarn.util.Records;
 import org.apache.hadoop.yarn.api.ContainerManagementProtocol;
+import org.apache.hadoop.yarn.client.api.NMTokenCache;
 
 import com.google.common.util.concurrent.AbstractScheduledService;
 
@@ -136,7 +136,7 @@ public class AMService extends AbstractScheduledService {
     
     for (Token<? extends TokenIdentifier> token : UserGroupInformation
         .getCurrentUser().getTokens()) {
-      LOG.info("found token kind: " + token.getKind());
+      LOG.info("found token: " + token);
       if (token.getKind().equals(AMRMTokenIdentifier.KIND_NAME)) {
         SecurityUtil.setTokenService(token, rmAddress);
       }
@@ -226,6 +226,7 @@ public class AMService extends AbstractScheduledService {
     req.setProgress(currentProgress);
     
     AllocateResponse allocateResponse = resourceManager.allocate(req);
+    populateNMTokens(allocateResponse);
     
     LOG.info("allocateResponse ResponseId: " + allocateResponse.getResponseId());
     LOG.info("allocateResponse available memory: " + allocateResponse.getAvailableResources().getMemory());
@@ -234,6 +235,19 @@ public class AMService extends AbstractScheduledService {
     
     return allocateResponse;
     
+  }
+  
+  private void populateNMTokens(AllocateResponse allocateResponse) {
+    LOG.info("populateNMTokens()");
+    for (NMToken token : allocateResponse.getNMTokens()) {
+      String nodeId = token.getNodeId().toString();
+      if (NMTokenCache.containsNMToken(nodeId)) {
+        LOG.info("Replacing token for : " + nodeId);
+      } else {
+        LOG.info("Received new token for : " + nodeId);
+      }
+      NMTokenCache.setNMToken(nodeId, token.getToken());
+    }
   }
   
   private void handleAllocation(AllocateResponse response) throws IOException,YarnException {
@@ -253,18 +267,22 @@ public class AMService extends AbstractScheduledService {
     // Connect to ContainerManager on the allocated container 
     String cmIpPortStr = container.getNodeId().getHost() + ":" 
         + container.getNodeId().getPort();
-    InetSocketAddress cmAddress = NetUtils.createSocketAddr(cmIpPortStr);     
+    final InetSocketAddress cmAddress = NetUtils.createSocketAddr(cmIpPortStr);     
     LOG.info("connecting to " + cmAddress);
     
-    Token<ContainerTokenIdentifier> token = new Token<ContainerTokenIdentifier>(
-        container.getContainerToken().getIdentifier().array(),
-        container.getContainerToken().getPassword().array(),
-        new Text(container.getContainerToken().getKind()),
-        new Text(container.getContainerToken().getService())
-        );
-    SecurityUtil.setTokenService(token, cmAddress);
-    ContainerManagementProtocol cm = 
-        (ContainerManagementProtocol)rpc.getProxy(ContainerManagementProtocol.class, cmAddress, conf);     
+    UserGroupInformation user = UserGroupInformation.createRemoteUser(
+        container.getId().getApplicationAttemptId().toString());
+    user.addToken(ConverterUtils.convertFromYarn(NMTokenCache.getNMToken(container.getNodeId().toString()), cmAddress));
+    ContainerManagementProtocol cm = user
+        .doAs(new PrivilegedAction<ContainerManagementProtocol>() {
+          @Override
+          public ContainerManagementProtocol run() {
+            return (ContainerManagementProtocol) rpc.getProxy(ContainerManagementProtocol.class, cmAddress, conf);
+          }
+        });
+    
+    //ContainerManagementProtocol cm = 
+    //    (ContainerManagementProtocol)rpc.getProxy(ContainerManagementProtocol.class, cmAddress, conf);
 
     // Now we setup a ContainerLaunchContext  
     ContainerLaunchContext ctx = 
@@ -295,7 +313,7 @@ public class AMService extends AbstractScheduledService {
     ctx.setLocalResources(localResources);                      
 
     // Set the necessary command to execute on the allocated container 
-    String command = "cmd ./MyExecShell.cmd"
+    String command = "cmd /c MyExecShell.cmd"
         + " 1>" + ApplicationConstants.LOG_DIR_EXPANSION_VAR + "/stdout"
         + " 2>" + ApplicationConstants.LOG_DIR_EXPANSION_VAR + "/stderr";
 
@@ -306,6 +324,7 @@ public class AMService extends AbstractScheduledService {
     // Send the start request to the ContainerManager
     StartContainerRequest startReq = Records.newRecord(StartContainerRequest.class);
     startReq.setContainerLaunchContext(ctx);
+    LOG.info("container token: " + container.getContainerToken());
     startReq.setContainerToken(container.getContainerToken());
     List<StartContainerRequest> reqs = new ArrayList<StartContainerRequest>();
     reqs.add(startReq);
