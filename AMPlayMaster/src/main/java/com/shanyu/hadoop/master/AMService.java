@@ -62,14 +62,15 @@ public class AMService extends AbstractScheduledService {
   private YarnRPC rpc;
   
   private int workerMemory = 1024;
-  private int currentProgress = 0;
-  private String shellScriptUri = "hdfs://localhost:9000/amplay/MyExecShell.cmd";
+  private String shellScriptUri = "/amplay/MyExecShell.cmd";
+  private int heartbeatInterval = 10;
   
   private ApplicationAttemptId appAttemptID;
   private ApplicationMasterProtocol resourceManager;
   private int responseId = 0;
   private int numContainers = 2;
   private int numCompletedContainers = 0;
+  private int currentProgress = 0;
   
   public AMService (Configuration c) {
     conf = c;
@@ -97,7 +98,7 @@ public class AMService extends AbstractScheduledService {
   }
 
   protected Scheduler scheduler() {
-    return Scheduler.newFixedRateSchedule(0, 3, TimeUnit.SECONDS);
+    return Scheduler.newFixedRateSchedule(0, heartbeatInterval, TimeUnit.SECONDS);
   }
   
   public boolean hasContainerRunning() {
@@ -284,13 +285,13 @@ public class AMService extends AbstractScheduledService {
         new HashMap<String, LocalResource>();
     // Again, the local resources from the ApplicationMaster is not copied over 
     // by default to the allocated container. Thus, it is the responsibility 
-          // of the ApplicationMaster to setup all the necessary local resources 
-          // needed by the job that will be executed on the allocated container. 
+    // of the ApplicationMaster to setup all the necessary local resources 
+    // needed by the job that will be executed on the allocated container. 
       
     // Assume that we are executing a shell script on the allocated container 
     // and the shell script's location in the filesystem is known to us. 
-    Path shellScriptPath = new Path(shellScriptUri); // <- known path to jar file
     FileSystem fs = FileSystem.get(conf);
+    Path shellScriptPath = fs.makeQualified(new Path(shellScriptUri)); // <- known path to jar file
     FileStatus pathStatus = fs.getFileStatus(shellScriptPath);
     LocalResource shellRsrc = Records.newRecord(LocalResource.class);
     shellRsrc.setType(LocalResourceType.FILE);

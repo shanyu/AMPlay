@@ -54,7 +54,7 @@ public class AppClient extends Configured implements Tool {
   
   private Configuration conf;
   private YarnRPC rpc;
-  private String amJarUri = "hdfs://localhost:9000/amplay/AMPlayMaster-1.0-SNAPSHOT.jar";
+  private String amJarUri = "/amplay/AMPlayMaster-1.0-SNAPSHOT.jar";
   
   private static final Set<YarnApplicationState> DONE = EnumSet.of(
       YarnApplicationState.FAILED, YarnApplicationState.FINISHED,
@@ -137,8 +137,8 @@ public class AppClient extends Configured implements Tool {
     // Lets assume the jar we need for our ApplicationMaster is available in 
     // HDFS at a certain known path to us and we want to make it available to
     // the ApplicationMaster in the launched container 
-    Path jarPath = new Path(amJarUri); // <- known path to jar file
     FileSystem fs = FileSystem.get(conf);
+    Path jarPath = fs.makeQualified(new Path(amJarUri)); // <- known path to jar file
     FileStatus jarStatus = fs.getFileStatus(jarPath);
     LocalResource amJarRsrc = Records.newRecord(LocalResource.class);
     // Set the type of resource - file or archive
