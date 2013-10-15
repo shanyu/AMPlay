@@ -160,12 +160,6 @@ public class AMService extends AbstractScheduledService {
     RegisterApplicationMasterRequest appMasterRequest =
         RegisterApplicationMasterRequest.newInstance("localhost", 8888, "localhost:8888");
     
-    //InetSocketAddress serviceAddr = null;
-    //serviceAddr = new InetSocketAddress("localhost", 8888);
-    //appMasterRequest.setHost(serviceAddr.getHostName());
-    //appMasterRequest.setRpcPort(serviceAddr.getPort());
-    //appMasterRequest.setTrackingUrl(serviceAddr.getHostName() + ":" + serviceAddr.getPort());
-    
     // The registration response is useful as it provides information about the 
     // cluster. 
     // Similar to the GetNewApplicationResponse in the client, it provides 
@@ -190,7 +184,7 @@ public class AMService extends AbstractScheduledService {
     // set the priority for the request
     Priority pri = Records.newRecord(Priority.class);
     pri.setPriority(1);
-    rsrcRequest.setPriority(pri);           
+    rsrcRequest.setPriority(pri);
 
     // Set up resource type requirements
     // For now, only memory is supported so we set memory requirements
@@ -281,9 +275,6 @@ public class AMService extends AbstractScheduledService {
           }
         });
     
-    //ContainerManagementProtocol cm = 
-    //    (ContainerManagementProtocol)rpc.getProxy(ContainerManagementProtocol.class, cmAddress, conf);
-
     // Now we setup a ContainerLaunchContext  
     ContainerLaunchContext ctx = 
         Records.newRecord(ContainerLaunchContext.class);
