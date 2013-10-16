@@ -51,8 +51,8 @@ public class AppMaster extends Configured implements Tool {
   @Override
   public int run(String[] args) throws Exception {
     LOG.info("Running AppMaster with: " + args.length);
-    
-    AMService service = new AMService(getConf());
+        
+    AMService service = new AMService(getConf(), Integer.parseInt(args[0]));
     
     service.startAndWait();
     while(service.hasContainerRunning()) {

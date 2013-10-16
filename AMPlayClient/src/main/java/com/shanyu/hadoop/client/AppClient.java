@@ -8,6 +8,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.EnumSet;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -24,6 +25,8 @@ import org.apache.hadoop.yarn.api.ApplicationClientProtocol;
 import org.apache.hadoop.yarn.api.ApplicationConstants;
 import org.apache.hadoop.yarn.api.protocolrecords.GetApplicationReportRequest;
 import org.apache.hadoop.yarn.api.protocolrecords.GetApplicationReportResponse;
+import org.apache.hadoop.yarn.api.protocolrecords.GetClusterNodesRequest;
+import org.apache.hadoop.yarn.api.protocolrecords.GetClusterNodesResponse;
 import org.apache.hadoop.yarn.api.protocolrecords.GetNewApplicationRequest;
 import org.apache.hadoop.yarn.api.protocolrecords.GetNewApplicationResponse;
 import org.apache.hadoop.yarn.api.protocolrecords.SubmitApplicationRequest;
@@ -34,6 +37,8 @@ import org.apache.hadoop.yarn.api.records.ContainerLaunchContext;
 import org.apache.hadoop.yarn.api.records.LocalResource;
 import org.apache.hadoop.yarn.api.records.LocalResourceType;
 import org.apache.hadoop.yarn.api.records.LocalResourceVisibility;
+import org.apache.hadoop.yarn.api.records.NodeReport;
+import org.apache.hadoop.yarn.api.records.NodeState;
 import org.apache.hadoop.yarn.api.records.Resource;
 import org.apache.hadoop.yarn.api.records.YarnApplicationState;
 import org.apache.hadoop.yarn.conf.YarnConfiguration;
@@ -62,6 +67,7 @@ public class AppClient extends Configured implements Tool {
   private String appName = "AMPlay";
   private int amMemory = 1024;
   
+  private int numContainers = 2;
   private ApplicationClientProtocol applicationsManager = null;
   private ApplicationId appId = null;
   private ContainerLaunchContext amContainer = null;
@@ -75,8 +81,9 @@ public class AppClient extends Configured implements Tool {
   
   @Override
   public int run(String[] args) throws Exception {
-    init();
+    init(args);
     connect();
+    printClusterNodes();
     getAppId();
     setupAMContainer();
     setupAppContext();
@@ -95,9 +102,14 @@ public class AppClient extends Configured implements Tool {
     return 0;
   }
   
-  private void init() {
+  ///////////////////////////////////////////////////////////////////////////
+  //Private methods
+  
+  private void init(String[] args) {
     conf = getConf();
     rpc = YarnRPC.create(conf);
+    numContainers = Integer.parseInt(args[0]);
+    LOG.info("numContainers = " + numContainers);
   }
   
   private void connect() {
@@ -115,6 +127,21 @@ public class AppClient extends Configured implements Tool {
 
     applicationsManager = ((ApplicationClientProtocol) rpc.getProxy(
         ApplicationClientProtocol.class, rmAddress, conf));
+  }
+  
+  private void printClusterNodes() throws IOException,YarnException {
+    GetClusterNodesRequest request =
+        Records.newRecord(GetClusterNodesRequest.class);
+    EnumSet<NodeState> states = EnumSet.noneOf(NodeState.class);
+    states.add(NodeState.RUNNING);
+    request.setNodeStates(states);
+    GetClusterNodesResponse response =
+        applicationsManager.getClusterNodes(request);
+
+    LOG.info("Total number of running nodes: " + response.getNodeReports().size());
+    for(NodeReport nr : response.getNodeReports()) {
+      LOG.info("nodeId: " + nr.getNodeId() + ", rackName: " + nr.getRackName());
+    }
   }
   
   private void getAppId() throws IOException,YarnException {
@@ -179,10 +206,10 @@ public class AppClient extends Configured implements Tool {
     
     // Construct the command to be executed on the launched container 
     String command =
-        "%JAVA_HOME%/bin/java" +
-        " com.shanyu.hadoop.master.AppMaster" + 
-        " " + 
-        " 1>" + ApplicationConstants.LOG_DIR_EXPANSION_VAR + "/stdout" +
+        "%JAVA_HOME%/bin/java"+
+        " com.shanyu.hadoop.master.AppMaster" +
+        " " + numContainers +
+        " 1>" + ApplicationConstants.LOG_DIR_EXPANSION_VAR + "/stdout"+
         " 2>" + ApplicationConstants.LOG_DIR_EXPANSION_VAR + "/stderr";
 
     List<String> commands = new ArrayList<String>();
@@ -241,7 +268,11 @@ public class AppClient extends Configured implements Tool {
   
   
   public static void main( String[] args ) throws Exception {
-    System.out.println( "Hello World!" );
+    if(args.length < 1) {
+      System.out.println("Usage:");
+      System.out.println("  hadoop jar AMPlayClient.jar com.shanyu.hadoop.client.AppClient [numContainers]");
+      return;
+    }
     int rc = ToolRunner.run(new Configuration(), new AppClient(), args);
     System.exit(rc);
   }

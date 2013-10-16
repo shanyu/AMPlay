@@ -72,9 +72,11 @@ public class AMService extends AbstractScheduledService {
   private int numCompletedContainers = 0;
   private int currentProgress = 0;
   
-  public AMService (Configuration c) {
+  public AMService (Configuration c, int numC) {
     conf = c;
     rpc = YarnRPC.create(conf);
+    numContainers = numC;
+    LOG.info("numContainers is set to " + numContainers);
   }
   
   protected void startUp() throws Exception {
