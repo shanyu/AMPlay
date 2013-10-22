@@ -22,7 +22,6 @@ import org.apache.hadoop.security.token.Token;
 import org.apache.hadoop.security.token.TokenIdentifier;
 import org.apache.hadoop.yarn.api.ApplicationConstants;
 import org.apache.hadoop.yarn.api.ApplicationMasterProtocol;
-import org.apache.hadoop.yarn.api.protocolrecords.AllocateRequest;
 import org.apache.hadoop.yarn.api.protocolrecords.AllocateResponse;
 import org.apache.hadoop.yarn.api.protocolrecords.FinishApplicationMasterRequest;
 import org.apache.hadoop.yarn.api.protocolrecords.RegisterApplicationMasterRequest;
@@ -67,10 +66,11 @@ public class AMService extends AbstractScheduledService {
   
   private ApplicationAttemptId appAttemptID;
   private ApplicationMasterProtocol resourceManager;
-  private int responseId = 0;
+
   private int numContainers = 2;
   private int numCompletedContainers = 0;
-  private int currentProgress = 0;
+  
+  private AllocationStrategy allocStrategy;
   
   public AMService (Configuration c, int numC) {
     conf = c;
@@ -83,15 +83,18 @@ public class AMService extends AbstractScheduledService {
     getAttemptId();
     connect();
     registerAM();
+    allocStrategy = new UniqueNodeAllocationStrategy(resourceManager);
     
     List<ResourceRequest> requestedContainers = new ArrayList<ResourceRequest>();
     requestedContainers.add(setupResourceRequest());
-    allocateResource(requestedContainers, null);
+    allocStrategy.addResourceRequests(requestedContainers);
+    allocStrategy.allocateResource(0);
   }
 
   protected void runOneIteration() throws Exception {
     LOG.info("runOneIteration, attemp ID: " + appAttemptID);
-    AllocateResponse allocateResponse = allocateResource(null, null);
+    AllocateResponse allocateResponse = allocStrategy.allocateResource(numCompletedContainers/(float)numContainers);
+    populateNMTokens(allocateResponse);
     handleAllocation(allocateResponse);
   }
   
@@ -202,52 +205,12 @@ public class AMService extends AbstractScheduledService {
     return rsrcRequest;
   }
   
-  private AllocateResponse allocateResource(List<ResourceRequest> request,
-      List<ContainerId> release) throws IOException,YarnException {
-    AllocateRequest req = Records.newRecord(AllocateRequest.class);
-
-    // The response id set in the request will be sent back in 
-    // the response so that the ApplicationMaster can 
-    // match it to its original ask and act appropriately.
-    req.setResponseId(responseId++);
-    
-    // Add the list of containers being asked for 
-    req.setAskList(request);
-    
-    // If the ApplicationMaster has no need for certain 
-    // containers due to over-allocation or for any other
-    // reason, it can release them back to the ResourceManager
-    req.setReleaseList(release);
-    
-    // Assuming the ApplicationMaster can track its progress
-    req.setProgress(currentProgress);
-    
-    AllocateResponse allocateResponse = resourceManager.allocate(req);
-    populateNMTokens(allocateResponse);
-    
-    LOG.info("allocateResponse ResponseId: " + allocateResponse.getResponseId());
-    LOG.info("allocateResponse available memory: " + allocateResponse.getAvailableResources().getMemory());
-    LOG.info("allocateResponse allocated container: " + allocateResponse.getAllocatedContainers().size());
-    LOG.info("allocateResponse completed container: " + allocateResponse.getCompletedContainersStatuses().size());
-    
-    return allocateResponse;
-    
-  }
-  
-  private void populateNMTokens(AllocateResponse allocateResponse) {
-    LOG.info("populateNMTokens()");
-    for (NMToken token : allocateResponse.getNMTokens()) {
-      String nodeId = token.getNodeId().toString();
-      if (NMTokenCache.containsNMToken(nodeId)) {
-        LOG.info("Replacing token for : " + nodeId);
-      } else {
-        LOG.info("Received new token for : " + nodeId);
-      }
-      NMTokenCache.setNMToken(nodeId, token.getToken());
-    }
-  }
-  
   private void handleAllocation(AllocateResponse response) throws IOException,YarnException {
+    LOG.info("allocateResponse ResponseId: " + response.getResponseId());
+    LOG.info("allocateResponse available memory: " + response.getAvailableResources().getMemory());
+    LOG.info("allocateResponse allocated container: " + response.getAllocatedContainers().size());
+    LOG.info("allocateResponse completed container: " + response.getCompletedContainersStatuses().size());
+    
     for(Container container : response.getAllocatedContainers()) {
       startContainer(container);
     }
@@ -256,6 +219,18 @@ public class AMService extends AbstractScheduledService {
       numCompletedContainers++;
       int exitStatus = status.getExitStatus();
       LOG.info("container " + status.getContainerId() + " finished with exit status: " + exitStatus);
+    }
+  }
+  
+  private void populateNMTokens(AllocateResponse allocateResponse) {
+    for (NMToken token : allocateResponse.getNMTokens()) {
+      String nodeId = token.getNodeId().toString();
+      if (NMTokenCache.containsNMToken(nodeId)) {
+        LOG.info("Replacing token for : " + nodeId);
+      } else {
+        LOG.info("Received new token for : " + nodeId);
+      }
+      NMTokenCache.setNMToken(nodeId, token.getToken());
     }
   }
   

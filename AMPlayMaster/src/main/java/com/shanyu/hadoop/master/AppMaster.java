@@ -50,13 +50,16 @@ public class AppMaster extends Configured implements Tool {
   
   @Override
   public int run(String[] args) throws Exception {
-    LOG.info("Running AppMaster with: " + args.length);
+    LOG.info("Running AppMaster with num of args: " + args.length);
         
     AMService service = new AMService(getConf(), Integer.parseInt(args[0]));
+    int timeoutInSec = Integer.parseInt(args[1]);
+    int runningSec = 0;
     
     service.startAndWait();
-    while(service.hasContainerRunning()) {
-      Thread.sleep(2000);
+    while(service.hasContainerRunning() && runningSec < timeoutInSec) {
+      Thread.sleep(5000);
+      runningSec += 5;
     }
     service.stopAndWait();
     LOG.info("AppMaster done");

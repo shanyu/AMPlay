@@ -68,6 +68,7 @@ public class AppClient extends Configured implements Tool {
   private int amMemory = 1024;
   
   private int numContainers = 2;
+  private int timeoutInSec = 120;
   private ApplicationClientProtocol applicationsManager = null;
   private ApplicationId appId = null;
   private ContainerLaunchContext amContainer = null;
@@ -109,6 +110,7 @@ public class AppClient extends Configured implements Tool {
     conf = getConf();
     rpc = YarnRPC.create(conf);
     numContainers = Integer.parseInt(args[0]);
+    timeoutInSec = Integer.parseInt(args[1]);
     LOG.info("numContainers = " + numContainers);
   }
   
@@ -209,6 +211,7 @@ public class AppClient extends Configured implements Tool {
         "%JAVA_HOME%/bin/java"+
         " com.shanyu.hadoop.master.AppMaster" +
         " " + numContainers +
+        " " + timeoutInSec +
         " 1>" + ApplicationConstants.LOG_DIR_EXPANSION_VAR + "/stdout"+
         " 2>" + ApplicationConstants.LOG_DIR_EXPANSION_VAR + "/stderr";
 
@@ -268,9 +271,9 @@ public class AppClient extends Configured implements Tool {
   
   
   public static void main( String[] args ) throws Exception {
-    if(args.length < 1) {
+    if(args.length < 2) {
       System.out.println("Usage:");
-      System.out.println("  hadoop jar AMPlayClient.jar com.shanyu.hadoop.client.AppClient [numContainers]");
+      System.out.println("  hadoop jar AMPlayClient.jar com.shanyu.hadoop.client.AppClient [numContainers] [timeoutInSec]");
       return;
     }
     int rc = ToolRunner.run(new Configuration(), new AppClient(), args);
